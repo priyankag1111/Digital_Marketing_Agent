@@ -45,7 +45,7 @@ GROQ_API_KEY = "your-groq-api-key"
 
 ## Image generation
 
-The **Image studio** can generate images from text prompts using open-model providers:
+The **Image studio** generates visuals grounded in your uploaded PDFs using open-model providers. Describe what you want, such as `Create an infographic explaining the main stages`, and the app retrieves relevant PDF passages before building the image prompt.
 
 - **Pollinations:** no application key required; availability and rate limits are controlled by the provider.
 - **Hugging Face FLUX.1-schnell:** add an `HF_TOKEN` with inference access for more predictable access.

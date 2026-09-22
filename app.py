@@ -196,34 +196,6 @@ def main() -> None:
         if uploaded_files:
             st.caption(f"{len(uploaded_files)} PDF(s) selected")
 
-    st.subheader("Generate an image")
-    st.caption("Create an illustration, diagram, or visual concept from a text prompt.")
-    image_prompt = st.text_area(
-        "Image prompt",
-        placeholder="A clean editorial illustration of a digital marketing funnel, warm orange and teal palette",
-        label_visibility="collapsed",
-    )
-    if st.button("Generate image", type="primary", disabled=not image_prompt.strip()):
-        with st.spinner("Generating image..."):
-            try:
-                image_bytes, mime_type = generate_image(
-                    image_prompt.strip(), image_provider, hf_token
-                )
-                st.session_state.generated_image = image_bytes
-                st.session_state.generated_image_type = mime_type
-            except Exception as error:
-                st.error("Image generation failed.")
-                st.caption(f"Image provider error: {error}")
-
-    if st.session_state.get("generated_image"):
-        st.image(st.session_state.generated_image, caption=image_prompt or "Generated image")
-        st.download_button(
-            "Download image",
-            data=st.session_state.generated_image,
-            file_name="papertrail-generated-image.png",
-            mime=st.session_state.get("generated_image_type", "image/png"),
-        )
-
     if not api_key:
         st.info("Add a Groq API key in the sidebar to ask questions.")
         st.stop()
@@ -248,6 +220,50 @@ def main() -> None:
     if not chunks:
         st.error("No selectable text was found. Try a text-based PDF or add OCR first.")
         st.stop()
+
+    st.subheader("Generate an image from your PDFs")
+    st.caption("Use the indexed PDF content to create an infographic, diagram, or visual concept.")
+    visual_request = st.text_area(
+        "What should the image show?",
+        placeholder="Create a clear infographic explaining the main stages and benefits",
+    )
+    if st.button("Generate image from PDF", type="primary", disabled=not visual_request.strip()):
+        with st.spinner("Finding relevant PDF content and generating image..."):
+            try:
+                visual_sources = retrieve(
+                    visual_request, chunks, vectorizer, matrix, top_k=5
+                )
+                pdf_context = "\n".join(
+                    f"{source.source}, page {source.page}: {source.text}"
+                    for source, _ in visual_sources
+                )
+                image_prompt = (
+                    f"Create a polished educational visual. {visual_request}. "
+                    "Use only the following PDF content as factual source material. "
+                    "Use readable labels, a logical layout, and do not invent statistics or claims. "
+                    f"PDF content:\n{pdf_context[:7000]}"
+                )
+                image_bytes, mime_type = generate_image(
+                    image_prompt, image_provider, hf_token
+                )
+                st.session_state.generated_image = image_bytes
+                st.session_state.generated_image_type = mime_type
+                st.session_state.generated_image_caption = visual_request
+            except Exception as error:
+                st.error("Image generation failed.")
+                st.caption(f"Image provider error: {error}")
+
+    if st.session_state.get("generated_image"):
+        st.image(
+            st.session_state.generated_image,
+            caption=st.session_state.get("generated_image_caption", "Generated image"),
+        )
+        st.download_button(
+            "Download image",
+            data=st.session_state.generated_image,
+            file_name="papertrail-pdf-image.png",
+            mime=st.session_state.get("generated_image_type", "image/png"),
+        )
 
     for message in st.session_state.get("messages", []):
         with st.chat_message(message["role"]):
