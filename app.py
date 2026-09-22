@@ -140,7 +140,9 @@ def generate_image(prompt: str, provider: str, hf_token: str = "") -> tuple[byte
             raise RuntimeError(f"Hugging Face returned {response.text[:500]}")
         return response.content, content_type
 
-    image_url = "https://image.pollinations.ai/prompt/" + quote(prompt)
+    # Pollinations receives the prompt in the URL, so keep it below common URL limits.
+    compact_prompt = prompt[:1800]
+    image_url = "https://image.pollinations.ai/prompt/" + quote(compact_prompt, safe="")
     response = requests.get(
         image_url,
         params={"model": "flux", "width": 1024, "height": 1024, "nologo": "true"},
@@ -241,7 +243,7 @@ def main() -> None:
                     f"Create a polished educational visual. {visual_request}. "
                     "Use only the following PDF content as factual source material. "
                     "Use readable labels, a logical layout, and do not invent statistics or claims. "
-                    f"PDF content:\n{pdf_context[:7000]}"
+                    f"PDF content:\n{pdf_context[:2500]}"
                 )
                 image_bytes, mime_type = generate_image(
                     image_prompt, image_provider, hf_token
