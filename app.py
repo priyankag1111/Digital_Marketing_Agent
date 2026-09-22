@@ -4,7 +4,9 @@ import hashlib
 import io
 import os
 from dataclasses import dataclass
+from urllib.parse import quote
 
+import requests
 import streamlit as st
 from openai import OpenAI
 from pypdf import PdfReader
@@ -114,6 +116,26 @@ def answer_question(
     return response.choices[0].message.content or "I could not generate an answer."
 
 
+def generate_image(prompt: str, provider: str, hf_token: str = "") -> tuple[bytes, str]:
+    if provider == "Hugging Face · FLUX.1-schnell":
+        if not hf_token:
+            raise ValueError("Add an HF_TOKEN to use Hugging Face image generation.")
+        response = requests.post(
+            "https://router.huggingface.co/hf-inference/models/"
+            "black-forest-labs/FLUX.1-schnell",
+            headers={"Authorization": f"Bearer {hf_token}"},
+            json={"inputs": prompt},
+            timeout=120,
+        )
+        response.raise_for_status()
+        return response.content, "image/png"
+
+    image_url = "https://image.pollinations.ai/prompt/" + quote(prompt)
+    response = requests.get(image_url, params={"model": "flux", "width": 1024, "height": 1024}, timeout=120)
+    response.raise_for_status()
+    return response.content, response.headers.get("Content-Type", "image/jpeg")
+
+
 def main() -> None:
     st.set_page_config(page_title="Papertrail", page_icon="📚", layout="wide")
     st.title("Papertrail")
@@ -136,6 +158,18 @@ def main() -> None:
                 "qwen/qwen3-32b",
             ],
         )
+        st.divider()
+        st.header("Image studio")
+        image_provider = st.selectbox(
+            "Image provider",
+            ["Pollinations · no key", "Hugging Face · FLUX.1-schnell"],
+        )
+        hf_token = st.text_input(
+            "Hugging Face token",
+            value=os.getenv("HF_TOKEN", ""),
+            type="password",
+            help="Required only for the Hugging Face provider.",
+        )
         uploaded_files = st.file_uploader(
             "Upload subject PDFs",
             type="pdf",
@@ -144,6 +178,34 @@ def main() -> None:
         )
         if uploaded_files:
             st.caption(f"{len(uploaded_files)} PDF(s) selected")
+
+    st.subheader("Generate an image")
+    st.caption("Create an illustration, diagram, or visual concept from a text prompt.")
+    image_prompt = st.text_area(
+        "Image prompt",
+        placeholder="A clean editorial illustration of a digital marketing funnel, warm orange and teal palette",
+        label_visibility="collapsed",
+    )
+    if st.button("Generate image", type="primary", disabled=not image_prompt.strip()):
+        with st.spinner("Generating image..."):
+            try:
+                image_bytes, mime_type = generate_image(
+                    image_prompt.strip(), image_provider, hf_token
+                )
+                st.session_state.generated_image = image_bytes
+                st.session_state.generated_image_type = mime_type
+            except Exception as error:
+                st.error("Image generation failed.")
+                st.caption(f"Image provider error: {error}")
+
+    if st.session_state.get("generated_image"):
+        st.image(st.session_state.generated_image, caption=image_prompt or "Generated image")
+        st.download_button(
+            "Download image",
+            data=st.session_state.generated_image,
+            file_name="papertrail-generated-image.png",
+            mime=st.session_state.get("generated_image_type", "image/png"),
+        )
 
     if not api_key:
         st.info("Add a Groq API key in the sidebar to ask questions.")

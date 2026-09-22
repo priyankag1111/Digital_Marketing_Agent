@@ -43,6 +43,15 @@ GROQ_API_KEY = "your-groq-api-key"
 
 5. Deploy. Upload PDFs in the app; files are processed in the current session and are not committed to the repository.
 
+## Image generation
+
+The **Image studio** can generate images from text prompts using open-model providers:
+
+- **Pollinations:** no application key required; availability and rate limits are controlled by the provider.
+- **Hugging Face FLUX.1-schnell:** add an `HF_TOKEN` with inference access for more predictable access.
+
+Generated images are held in the current Streamlit session and can be downloaded. The image prompt is sent to the selected provider.
+
 ## Notes
 
 - Text-based PDFs are supported. Scanned PDFs need OCR before upload.
