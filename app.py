@@ -117,6 +117,38 @@ def answer_question(
     return response.choices[0].message.content or "I could not generate an answer."
 
 
+def create_visual_brief(
+    client: OpenAI,
+    request: str,
+    retrieved: list[tuple[TextChunk, float]],
+    chat_model: str,
+) -> str:
+    source_text = "\n\n".join(
+        f"{chunk.source}, page {chunk.page}: {chunk.text}" for chunk, _ in retrieved
+    )
+    response = client.chat.completions.create(
+        model=chat_model,
+        temperature=0.3,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are an art director converting source material into an image prompt. "
+                    "Use only facts present in the source. Create one concise visual brief with "
+                    "subject, composition, visual hierarchy, color palette, and style. "
+                    "Avoid invented numbers, logos, brand names, and long readable text. "
+                    "Keep it under 900 characters."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Visual request: {request}\n\nSource material:\n{source_text[:6000]}",
+            },
+        ],
+    )
+    return response.choices[0].message.content or request
+
+
 def generate_image(prompt: str, provider: str, hf_token: str = "") -> tuple[bytes, str]:
     if provider == "Hugging Face · FLUX.1-schnell":
         if not hf_token:
@@ -235,15 +267,8 @@ def main() -> None:
                 visual_sources = retrieve(
                     visual_request, chunks, vectorizer, matrix, top_k=5
                 )
-                pdf_context = "\n".join(
-                    f"{source.source}, page {source.page}: {source.text}"
-                    for source, _ in visual_sources
-                )
-                image_prompt = (
-                    f"Create a polished educational visual. {visual_request}. "
-                    "Use only the following PDF content as factual source material. "
-                    "Use readable labels, a logical layout, and do not invent statistics or claims. "
-                    f"PDF content:\n{pdf_context[:2500]}"
+                image_prompt = create_visual_brief(
+                    client, visual_request, visual_sources, chat_model
                 )
                 image_bytes, mime_type = generate_image(
                     image_prompt, image_provider, hf_token
@@ -251,9 +276,14 @@ def main() -> None:
                 st.session_state.generated_image = image_bytes
                 st.session_state.generated_image_type = mime_type
                 st.session_state.generated_image_caption = visual_request
+                st.session_state.generated_visual_brief = image_prompt
             except Exception as error:
                 st.error("Image generation failed.")
                 st.caption(f"Image provider error: {error}")
+
+        if st.session_state.get("generated_visual_brief"):
+            with st.expander("View generated visual brief"):
+                st.write(st.session_state.generated_visual_brief)
 
     if st.session_state.get("generated_image"):
         st.image(
