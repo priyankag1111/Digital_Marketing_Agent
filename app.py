@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import os
+import time
 from dataclasses import dataclass
 from urllib.parse import quote
 
@@ -120,20 +121,36 @@ def generate_image(prompt: str, provider: str, hf_token: str = "") -> tuple[byte
     if provider == "Hugging Face · FLUX.1-schnell":
         if not hf_token:
             raise ValueError("Add an HF_TOKEN to use Hugging Face image generation.")
-        response = requests.post(
-            "https://router.huggingface.co/hf-inference/models/"
-            "black-forest-labs/FLUX.1-schnell",
-            headers={"Authorization": f"Bearer {hf_token}"},
-            json={"inputs": prompt},
-            timeout=120,
-        )
+        response = None
+        for attempt in range(3):
+            response = requests.post(
+                "https://router.huggingface.co/hf-inference/models/"
+                "black-forest-labs/FLUX.1-schnell",
+                headers={"Authorization": f"Bearer {hf_token}"},
+                json={"inputs": prompt},
+                timeout=120,
+            )
+            if response.status_code != 503:
+                break
+            if attempt < 2:
+                time.sleep(5)
         response.raise_for_status()
-        return response.content, "image/png"
+        content_type = response.headers.get("Content-Type", "")
+        if not content_type.startswith("image/"):
+            raise RuntimeError(f"Hugging Face returned {response.text[:500]}")
+        return response.content, content_type
 
     image_url = "https://image.pollinations.ai/prompt/" + quote(prompt)
-    response = requests.get(image_url, params={"model": "flux", "width": 1024, "height": 1024}, timeout=120)
+    response = requests.get(
+        image_url,
+        params={"model": "flux", "width": 1024, "height": 1024, "nologo": "true"},
+        timeout=120,
+    )
     response.raise_for_status()
-    return response.content, response.headers.get("Content-Type", "image/jpeg")
+    content_type = response.headers.get("Content-Type", "")
+    if not content_type.startswith("image/"):
+        raise RuntimeError(f"Pollinations returned {response.text[:500]}")
+    return response.content, content_type
 
 
 def main() -> None:
